@@ -44,3 +44,19 @@ if (!function_exists('SilverStripe\\StaticPublishQueue\\URLtoPath')) {
         return $prefix . basename($filename);
     }
 }
+
+if (!function_exists('SilverStripe\\StaticPublishQueue\\PathToURL')) {
+    function PathToURL($path, $destPath)
+    {
+        if (strpos($path, $destPath) === 0) {
+            //Strip off the full path of the cache dir from the front
+            $path = substr($path, strlen($destPath));
+        }
+
+        // Strip off the file extension and leading /
+        $relativeURL = substr($path, 0, (strrpos($path, ".")));
+        $relativeURL = ltrim($relativeURL, '/');
+
+        return $relativeURL;
+    }
+}

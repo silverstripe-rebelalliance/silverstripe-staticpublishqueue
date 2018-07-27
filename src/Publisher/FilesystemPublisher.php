@@ -7,6 +7,7 @@ use SilverStripe\Control\Director;
 use SilverStripe\Control\HTTPResponse;
 use SilverStripe\StaticPublishQueue\Publisher;
 use function SilverStripe\StaticPublishQueue\URLtoPath;
+use function SilverStripe\StaticPublishQueue\PathToURL;
 
 class FilesystemPublisher extends Publisher
 {
@@ -196,14 +197,10 @@ class FilesystemPublisher extends Publisher
 
     protected function pathToURL($path)
     {
-        if (strpos($path, $this->getDestPath()) === 0) {
-            //Strip off the full path of the cache dir from the front
-            $path = substr($path, strlen($this->getDestPath()));
-        }
-
-        // Strip off the file extension and leading /
-        $relativeURL = substr($path, 0, (strrpos($path, ".")));
-        $relativeURL = ltrim($relativeURL, '/');
+        $relativeURL = PathToURL(
+            $path,
+            $this->getDestPath()
+        );
 
         if (FilesystemPublisher::config()->get('domain_based_caching')) {
             // factor in the domain as the top dir
