@@ -23,6 +23,14 @@ use SilverStripe\Core\Injector\Injector;
 class SiteTreePublishingEngine extends SiteTreeExtension
 {
     /**
+     * If this is enabled, an individual job will be created to cache each URL.
+     * This does not apply to cache deletion, as that work is much lighter.
+     *
+     * @var bool
+     */
+    private static $split_jobs_by_url = false;
+
+    /**
      * Queues the urls to be flushed into the queue.
      *
      * @var array
@@ -140,18 +148,17 @@ class SiteTreePublishingEngine extends SiteTreeExtension
         $queue = QueuedJobService::singleton();
         if (!empty($this->toUpdate)) {
             foreach ($this->toUpdate as $queueItem) {
-                $job = Injector::inst()->create(GenerateStaticCacheJob::class);
-
-                $jobData = new \stdClass();
                 $urls = $queueItem->urlsToCache();
-                ksort($urls);
-                $jobData->URLsToProcess = $urls;
 
-                $job->setJobData(0, 0, false, $jobData, [
-                    'Building URLs: ' . var_export(array_keys($jobData->URLsToProcess), true)
-                ]);
-
-                $queue->queueJob($job);
+                if ($this->config('split_jobs_by_url') === true) {
+                    foreach ($urls as $url) {
+                        $job = $this->createJobWithURLs([$url]);
+                        $queue->queueJob($job);
+                    }
+                } else {
+                    $job = $this->createJobWithURLs($urls);
+                    $queue->queueJob($job);
+                }
             }
             $this->toUpdate = array();
         }
@@ -173,5 +180,27 @@ class SiteTreePublishingEngine extends SiteTreeExtension
             }
             $this->toDelete = array();
         }
+    }
+
+    /**
+     * Generates a Static Cache Job with the provided URLs attached.
+     *
+     * @param array $urls
+     * @return mixed
+     */
+    public function createJobWithURLs(array $urls)
+    {
+        $job = Injector::inst()->create(GenerateStaticCacheJob::class);
+
+        $jobData = new \stdClass();
+
+        ksort($urls);
+        $jobData->URLsToProcess = $urls;
+
+        $job->setJobData(0, 0, false, $jobData, [
+            'Building URLs: ' . var_export(array_keys($jobData->URLsToProcess), true)
+        ]);
+
+        return $job;
     }
 }
