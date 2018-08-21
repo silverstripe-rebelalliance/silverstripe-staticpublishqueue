@@ -3,6 +3,7 @@
 namespace SilverStripe\StaticPublishQueue\Extension\Engine;
 
 use SilverStripe\CMS\Model\SiteTreeExtension;
+use SilverStripe\Core\Config\Configurable;
 use SilverStripe\Core\Environment;
 use SilverStripe\StaticPublishQueue\Contract\StaticPublishingTrigger;
 use SilverStripe\StaticPublishQueue\Extension\Publishable\PublishableSiteTree;
@@ -22,13 +23,18 @@ use SilverStripe\Core\Injector\Injector;
  */
 class SiteTreePublishingEngine extends SiteTreeExtension
 {
+    use Configurable;
+
     /**
-     * If this is enabled, an individual job will be created to cache each URL.
+     * Maximum limit of processed urls per job
+     * this is useful when too many urls in a job make the job too demanding to run
+     * setting this to 0 (default) will leave number of urls unlimited, which will put all urls into a single job
      * This does not apply to cache deletion, as that work is much lighter.
      *
-     * @var bool
+     * @config
+     * @var int
      */
-    private static $split_jobs_by_url = false;
+    private static $max_urls_per_job = 0;
 
     /**
      * Queues the urls to be flushed into the queue.
@@ -149,14 +155,22 @@ class SiteTreePublishingEngine extends SiteTreeExtension
         if (!empty($this->toUpdate)) {
             foreach ($this->toUpdate as $queueItem) {
                 $urls = $queueItem->urlsToCache();
+                $urlsLimit = static::config()->get('max_urls_per_job');
+                $urlsLimit = ($urlsLimit) ? (int) $urlsLimit : 0;
+                $batches = ($urlsLimit > 0) ? $batches = array_chunk($urls, $urlsLimit, true) : [$urls];
 
-                if ($this->config('split_jobs_by_url') === true) {
-                    foreach ($urls as $url) {
-                        $job = $this->createJobWithURLs([$url]);
-                        $queue->queueJob($job);
-                    }
-                } else {
-                    $job = $this->createJobWithURLs($urls);
+                foreach ($batches as $urls) {
+                    $job = Injector::inst()->create(GenerateStaticCacheJob::class);
+
+                    $jobData = new \stdClass();
+
+                    ksort($urls);
+                    $jobData->URLsToProcess = $urls;
+
+                    $job->setJobData(0, 0, false, $jobData, [
+                        'Building URLs: ' . var_export(array_keys($jobData->URLsToProcess), true)
+                    ]);
+
                     $queue->queueJob($job);
                 }
             }
@@ -180,27 +194,5 @@ class SiteTreePublishingEngine extends SiteTreeExtension
             }
             $this->toDelete = array();
         }
-    }
-
-    /**
-     * Generates a Static Cache Job with the provided URLs attached.
-     *
-     * @param array $urls
-     * @return mixed
-     */
-    public function createJobWithURLs(array $urls)
-    {
-        $job = Injector::inst()->create(GenerateStaticCacheJob::class);
-
-        $jobData = new \stdClass();
-
-        ksort($urls);
-        $jobData->URLsToProcess = $urls;
-
-        $job->setJobData(0, 0, false, $jobData, [
-            'Building URLs: ' . var_export(array_keys($jobData->URLsToProcess), true)
-        ]);
-
-        return $job;
     }
 }
